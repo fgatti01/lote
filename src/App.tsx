@@ -5,10 +5,10 @@ import { Dashboard } from "@/pages/Dashboard"
 import { initializeLote45Client, getLote45Client } from "@/api/hooks"
 import { TooltipProvider } from "@/components/ui/tooltip"
 
-// Initialize the API client - Replace with your actual API key
+// Lote45 API Configuration
 const API_CONFIG = {
   baseUrl: "https://api.lote45.norte.link",
-  apiKey: import.meta.env.VITE_LOTE45_API_KEY || "YOUR_API_KEY_HERE",
+  apiKey: "469068f1e8c7c9f415126a11febb829b88122b7a",
 }
 
 // Mock data for demo purposes
@@ -70,24 +70,40 @@ const MOCK_DATA = {
   ],
 }
 
-const TRADING_DESKS = [
-  "Lote45 Main",
-  "Lote45 Macro",
-  "Lote45 Equities",
-  "Compass Fund",
-]
-
 function App() {
   const [currentPage, setCurrentPage] = useState("dashboard")
   const [darkMode, setDarkMode] = useState(false)
-  const [selectedDesk, setSelectedDesk] = useState(TRADING_DESKS[0])
+  const [tradingDesks, setTradingDesks] = useState<string[]>([])
+  const [selectedDesk, setSelectedDesk] = useState("")
   const [refDate, setRefDate] = useState(new Date())
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
   const [dashboardData, setDashboardData] = useState(MOCK_DATA)
 
-  // Initialize API client
+  // Initialize API client and fetch trading desks
   useEffect(() => {
-    initializeLote45Client(API_CONFIG)
+    const init = async () => {
+      initializeLote45Client(API_CONFIG)
+      const client = getLote45Client()
+
+      try {
+        // Fetch available trading desks
+        const response = await client.getTradingDesks()
+        if (response.data && Array.isArray(response.data)) {
+          const desks = response.data.map((d: { Name?: string; name?: string }) => d.Name || d.name || String(d))
+          setTradingDesks(desks)
+          if (desks.length > 0) {
+            setSelectedDesk(desks[0])
+          }
+        }
+      } catch (error) {
+        console.error("Failed to fetch trading desks:", error)
+        // Fallback desks
+        setTradingDesks(["Default"])
+        setSelectedDesk("Default")
+      }
+      setLoading(false)
+    }
+    init()
   }, [])
 
   // Toggle dark mode
@@ -97,26 +113,90 @@ function App() {
 
   // Fetch data from API
   const fetchDashboardData = useCallback(async () => {
+    if (!selectedDesk) return
+
     setLoading(true)
     try {
       const client = getLote45Client()
 
       // Fetch data in parallel
-      const [navResponse, overviewResponse, varResponse] = await Promise.all([
+      const [
+        navResponse,
+        overviewResponse,
+        plResponse,
+        todaysInfoResponse,
+      ] = await Promise.all([
         client.getNAVAndShare(refDate, selectedDesk),
         client.getOverview(refDate, selectedDesk),
-        client.getVaR(selectedDesk, refDate, 1, "Default"),
+        client.getPLResume(selectedDesk, refDate),
+        client.getTodaysInfo(selectedDesk, refDate),
       ])
 
-      // If we got real data, use it; otherwise keep mock data
-      if (navResponse.data || overviewResponse.data || varResponse.data) {
-        // Transform API responses to dashboard format
-        // This is where you'd map the actual API response to your data structure
-        console.log("API Data:", { navResponse, overviewResponse, varResponse })
+      console.log("API Responses:", {
+        nav: navResponse,
+        overview: overviewResponse,
+        pl: plResponse,
+        todaysInfo: todaysInfoResponse,
+      })
+
+      // Transform API data to dashboard format
+      const newData = { ...MOCK_DATA }
+
+      // NAV data
+      if (navResponse.data) {
+        const navData = navResponse.data as Record<string, unknown>
+        newData.nav = {
+          value: Number(navData.NAV || navData.nav || navData.Value || 0),
+          previousValue: Number(navData.PreviousNAV || navData.previousNav || 0) || undefined,
+        }
+        newData.share = {
+          value: Number(navData.Share || navData.share || navData.ShareValue || 0),
+          previousValue: Number(navData.PreviousShare || 0) || undefined,
+        }
       }
 
-      // For now, keep using mock data
-      // In production, you'd transform the API responses here
+      // Overview/Position data
+      if (overviewResponse.data) {
+        const overview = overviewResponse.data as Record<string, unknown>[]
+        if (Array.isArray(overview)) {
+          newData.positions = overview.slice(0, 20).map((item: Record<string, unknown>) => ({
+            book: String(item.Book || item.book || "—"),
+            product: String(item.Product || item.product || item.Ticker || "—"),
+            quantity: Number(item.Quantity || item.quantity || item.Qtd || 0),
+            value: Number(item.Value || item.value || item.Amount || 0),
+            pl: Number(item.PL || item.pl || item.DailyPL || 0),
+            plPercent: Number(item.PLPercent || item.plPercent || item.Return || 0),
+          }))
+
+          // Calculate allocation from positions
+          const allocationMap = new Map<string, number>()
+          overview.forEach((item: Record<string, unknown>) => {
+            const book = String(item.Book || item.book || "Other")
+            const value = Math.abs(Number(item.Value || item.value || 0))
+            allocationMap.set(book, (allocationMap.get(book) || 0) + value)
+          })
+          newData.allocation = Array.from(allocationMap.entries()).map(([name, value]) => ({ name, value }))
+        }
+      }
+
+      // P&L data
+      if (plResponse.data) {
+        const plData = plResponse.data as Record<string, unknown>
+        newData.pl = {
+          value: Number(plData.DailyPL || plData.dailyPL || plData.PL || 0),
+          previousValue: Number(plData.PreviousPL || 0) || undefined,
+        }
+      }
+
+      // Today's info (may contain VaR data)
+      if (todaysInfoResponse.data) {
+        const info = todaysInfoResponse.data as Record<string, unknown>
+        if (info.VaR || info.var) newData.var1d = Number(info.VaR || info.var || 0)
+        if (info.VaR5D || info.var5d) newData.var5d = Number(info.VaR5D || info.var5d || 0)
+        if (info.Stress || info.stress) newData.stress = Number(info.Stress || info.stress || 0)
+      }
+
+      setDashboardData(newData)
     } catch (error) {
       console.error("Failed to fetch dashboard data:", error)
     } finally {
@@ -160,7 +240,7 @@ function App() {
         <div className="flex-1 flex flex-col overflow-hidden">
           <Header
             title={getPageTitle()}
-            tradingDesks={TRADING_DESKS}
+            tradingDesks={tradingDesks}
             selectedDesk={selectedDesk}
             onDeskChange={setSelectedDesk}
             refDate={refDate}
