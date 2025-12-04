@@ -7,7 +7,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
-import { RefreshCw, Moon, Sun, Bell } from "lucide-react"
+import { RefreshCw, Moon, Sun, Calendar } from "lucide-react"
 import { formatDate } from "@/lib/utils"
 
 interface HeaderProps {
@@ -29,6 +29,7 @@ export function Header({
   selectedDesk,
   onDeskChange,
   refDate,
+  onRefDateChange,
   onRefresh,
   loading,
   darkMode,
@@ -57,26 +58,36 @@ export function Header({
         </Select>
 
         {/* Date Picker */}
-        <input
-          type="date"
-          value={refDate.toISOString().split('T')[0]}
-          onChange={(e) => {
-            const date = new Date(e.target.value)
-            if (!isNaN(date.getTime())) {
-              // Trigger date change in parent
-            }
-          }}
-          className="h-10 px-3 py-2 rounded-md border border-input bg-background text-sm"
-        />
+        <div className="flex items-center gap-2">
+          <input
+            type="date"
+            value={refDate.toISOString().split('T')[0]}
+            onChange={(e) => {
+              const date = new Date(e.target.value + 'T12:00:00')
+              if (!isNaN(date.getTime())) {
+                onRefDateChange(date)
+              }
+            }}
+            className="h-10 px-3 py-2 rounded-md border border-input bg-background text-sm"
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              const today = new Date()
+              today.setHours(12, 0, 0, 0)
+              onRefDateChange(today)
+            }}
+          >
+            <Calendar className="h-4 w-4 mr-1" />
+            Today
+          </Button>
+        </div>
 
         {/* Refresh Button */}
-        <Button variant="outline" size="icon" onClick={onRefresh} disabled={loading}>
-          <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-        </Button>
-
-        {/* Notifications */}
-        <Button variant="outline" size="icon">
-          <Bell className="h-4 w-4" />
+        <Button variant="default" onClick={onRefresh} disabled={loading}>
+          <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+          {loading ? 'Loading...' : 'Load Data'}
         </Button>
 
         {/* Dark Mode Toggle */}

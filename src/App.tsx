@@ -14,6 +14,13 @@ const API_CONFIG = {
 // Default trading desk
 const DEFAULT_TRADING_DESK = "NORTE LONG BIAS MASTER FIM"
 
+// Get today's date at noon (to avoid timezone issues)
+const getToday = () => {
+  const today = new Date()
+  today.setHours(12, 0, 0, 0)
+  return today
+}
+
 // Mock data for demo purposes
 const MOCK_DATA = {
   nav: { value: 125847632.50, previousValue: 124950000 },
@@ -78,9 +85,10 @@ function App() {
   const [darkMode, setDarkMode] = useState(false)
   const [tradingDesks, setTradingDesks] = useState<string[]>([DEFAULT_TRADING_DESK])
   const [selectedDesk, setSelectedDesk] = useState(DEFAULT_TRADING_DESK)
-  const [refDate, setRefDate] = useState(new Date())
+  const [refDate, setRefDate] = useState(getToday)
   const [loading, setLoading] = useState(true)
   const [dashboardData, setDashboardData] = useState(MOCK_DATA)
+  const [initialized, setInitialized] = useState(false)
 
   // Initialize API client and fetch trading desks
   useEffect(() => {
@@ -104,6 +112,7 @@ function App() {
         console.error("Failed to fetch trading desks:", error)
         // Keep default trading desk on error
       }
+      setInitialized(true)
       setLoading(false)
     }
     init()
@@ -207,10 +216,12 @@ function App() {
     }
   }, [selectedDesk, refDate])
 
-  // Fetch on mount and when parameters change
+  // Fetch data when initialized and when trading desk or date changes
   useEffect(() => {
-    fetchDashboardData()
-  }, [fetchDashboardData])
+    if (initialized && selectedDesk) {
+      fetchDashboardData()
+    }
+  }, [initialized, selectedDesk, refDate, fetchDashboardData])
 
   const handleRefresh = () => {
     fetchDashboardData()
