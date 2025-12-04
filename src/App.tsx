@@ -11,6 +11,9 @@ const API_CONFIG = {
   apiKey: "469068f1e8c7c9f415126a11febb829b88122b7a",
 }
 
+// Default trading desk
+const DEFAULT_TRADING_DESK = "NORTE LONG BIAS MASTER FIM"
+
 // Mock data for demo purposes
 const MOCK_DATA = {
   nav: { value: 125847632.50, previousValue: 124950000 },
@@ -73,8 +76,8 @@ const MOCK_DATA = {
 function App() {
   const [currentPage, setCurrentPage] = useState("dashboard")
   const [darkMode, setDarkMode] = useState(false)
-  const [tradingDesks, setTradingDesks] = useState<string[]>([])
-  const [selectedDesk, setSelectedDesk] = useState("")
+  const [tradingDesks, setTradingDesks] = useState<string[]>([DEFAULT_TRADING_DESK])
+  const [selectedDesk, setSelectedDesk] = useState(DEFAULT_TRADING_DESK)
   const [refDate, setRefDate] = useState(new Date())
   const [loading, setLoading] = useState(true)
   const [dashboardData, setDashboardData] = useState(MOCK_DATA)
@@ -90,16 +93,16 @@ function App() {
         const response = await client.getTradingDesks()
         if (response.data && Array.isArray(response.data)) {
           const desks = response.data.map((d: { Name?: string; name?: string }) => d.Name || d.name || String(d))
-          setTradingDesks(desks)
           if (desks.length > 0) {
-            setSelectedDesk(desks[0])
+            setTradingDesks(desks)
+            // Select the default desk if it exists, otherwise select the first one
+            const defaultExists = desks.includes(DEFAULT_TRADING_DESK)
+            setSelectedDesk(defaultExists ? DEFAULT_TRADING_DESK : desks[0])
           }
         }
       } catch (error) {
         console.error("Failed to fetch trading desks:", error)
-        // Fallback desks
-        setTradingDesks(["Default"])
-        setSelectedDesk("Default")
+        // Keep default trading desk on error
       }
       setLoading(false)
     }
